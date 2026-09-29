@@ -29,3 +29,13 @@ existing files additionally needs upgrade permission and an unmet upgrade target
 Tests cover automatic versus interactive indexer selection, monitoring context,
 manual versus scheduled triggers, dry runs, native decision processing, and no
 season-search fallback. Existing parser and multi-season import tests remain relevant.
+
+## Multi-season progress
+
+The v5 queue resource includes `episodeIdsBySeason` and `episodeIdsWithFiles`.
+Season numbers come from the mapped episodes instead of the pack's first season.
+The UI counts distinct episode IDs for the requested season and subtracts only
+that season's existing files. Already-owned episodes being upgraded keep the
+downloading color without adding unrelated missing episodes to their season.
+Overlapping downloads are counted once. Run `yarn test:queue-details` for the
+frontend regression cases; QueueResourceFixture tests the compact API mapping.
