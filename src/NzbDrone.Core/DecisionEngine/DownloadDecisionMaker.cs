@@ -76,7 +76,15 @@ namespace NzbDrone.Core.DecisionEngine
 
                 try
                 {
-                    var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title);
+                    var parsedEpisodeInfo = searchCriteria is CompleteSeriesSearchCriteria completeSeries
+                        ? CompleteSeriesReleaseParser.Parse(report.Title, completeSeries)
+                        : Parser.Parser.ParseTitle(report.Title);
+
+                    if (searchCriteria is CompleteSeriesSearchCriteria && parsedEpisodeInfo == null)
+                    {
+                        reportNumber++;
+                        continue;
+                    }
 
                     if (parsedEpisodeInfo == null || parsedEpisodeInfo.IsPossibleSpecialEpisode)
                     {

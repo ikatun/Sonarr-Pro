@@ -62,6 +62,31 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
                   .Returns(new List<string>());
         }
 
+        [Test]
+        public async Task complete_series_uses_interactive_torrent_indexers_and_all_regular_episodes()
+        {
+            WithEpisodes();
+            WithEpisode(0, 1, null, null);
+            _xemSeries.AlternateTitles = new List<string> { "Anime Alias" };
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_xemSeries.Id)).Returns(_xemEpisodes);
+            _mockIndexer.SetupGet(s => s.Protocol).Returns(DownloadProtocol.Torrent);
+            _mockIndexer.Setup(s => s.Fetch(It.IsAny<CompleteSeriesSearchCriteria>()))
+                .ReturnsAsync(new List<Parser.Model.ReleaseInfo>());
+            var usenet = new Mock<IIndexer>();
+            usenet.SetupGet(s => s.Protocol).Returns(DownloadProtocol.Usenet);
+            Mocker.GetMock<IIndexerFactory>().Setup(s => s.InteractiveSearchEnabled(true))
+                .Returns(new List<IIndexer> { _mockIndexer.Object, usenet.Object });
+
+            await Subject.CompleteSeriesSearch(_xemSeries.Id);
+
+            _mockIndexer.Verify(s => s.Fetch(It.Is<CompleteSeriesSearchCriteria>(c =>
+                c.InteractiveSearch && !c.MonitoredEpisodesOnly &&
+                c.SceneTitles.Contains("Anime Alias") && c.Episodes.All(e => e.SeasonNumber > 0))),
+                Times.Once());
+            usenet.Verify(s => s.Fetch(It.IsAny<CompleteSeriesSearchCriteria>()), Times.Never());
+            Mocker.GetMock<IIndexerFactory>().Verify(s => s.AutomaticSearchEnabled(It.IsAny<bool>()), Times.Never());
+        }
+
         private void WithEpisode(int seasonNumber, int episodeNumber, int? sceneSeasonNumber, int? sceneEpisodeNumber, string airDate = null)
         {
             var episode = Builder<Episode>.CreateNew()

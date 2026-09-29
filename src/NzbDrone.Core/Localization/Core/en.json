@@ -2321,5 +2321,8 @@
   "Yes": "Yes",
   "YesCancel": "Yes, Cancel",
   "Yesterday": "Yesterday",
-  "YesterdayAt": "Yesterday at {time}"
+  "YesterdayAt": "Yesterday at {time}",
+    "SearchCompleteSeries": "Search Complete Series",
+    "SearchCompleteSeriesTooltip": "Interactively search for torrents containing the complete series",
+    "SearchCompleteSeriesHelpText": "Shows torrents advertised as complete series or covering all known regular seasons. Completeness is inferred from release names; torrent contents are not checked. Specials are optional. For ongoing shows, complete means all currently known seasons."
 }

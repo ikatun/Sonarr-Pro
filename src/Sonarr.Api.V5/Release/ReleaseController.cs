@@ -189,8 +189,18 @@ public class ReleaseController : RestController<ReleaseResource>
 
     [HttpGet]
     [Produces("application/json")]
-    public async Task<Results<Ok<List<ReleaseResource>>, BadRequest>> GetReleases(int? seriesId, int? episodeId, int? seasonNumber)
+    public async Task<Results<Ok<List<ReleaseResource>>, BadRequest>> GetReleases(int? seriesId, int? episodeId, int? seasonNumber, bool completeSeries = false)
     {
+        if (completeSeries)
+        {
+            if (!seriesId.HasValue || episodeId.HasValue || seasonNumber.HasValue)
+            {
+                throw new NzbDroneClientException(HttpStatusCode.BadRequest, "Complete-series search requires only seriesId.");
+            }
+
+            return TypedResults.Ok(await GetCompleteSeriesReleases(seriesId.Value));
+        }
+
         if (episodeId.HasValue)
         {
             return TypedResults.Ok(await GetEpisodeReleases(episodeId.Value));
@@ -202,6 +212,20 @@ public class ReleaseController : RestController<ReleaseResource>
         }
 
         return TypedResults.Ok(await GetRss());
+    }
+
+    private async Task<List<ReleaseResource>> GetCompleteSeriesReleases(int seriesId)
+    {
+        try
+        {
+            var decisions = await _releaseSearchService.CompleteSeriesSearch(seriesId);
+            var prioritized = _prioritizeDownloadDecision.PrioritizeDecisions(decisions);
+            return MapDecisions(prioritized, new List<EpisodeHistory>());
+        }
+        catch (SearchFailedException ex)
+        {
+            throw new NzbDroneClientException(HttpStatusCode.BadRequest, ex.Message);
+        }
     }
 
     private async Task<List<ReleaseResource>> GetEpisodeReleases(int episodeId)

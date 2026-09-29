@@ -19,6 +19,7 @@ namespace NzbDrone.Core.IndexerSearch
 {
     public interface ISearchForReleases
     {
+        Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId);
         Task<List<DownloadDecision>> EpisodeSearch(int episodeId, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> EpisodeSearch(Episode episode, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> SeasonSearch(int seriesId, int seasonNumber, bool missingOnly, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
@@ -47,6 +48,24 @@ namespace NzbDrone.Core.IndexerSearch
             _episodeService = episodeService;
             _makeDownloadDecision = makeDownloadDecision;
             _logger = logger;
+        }
+
+        public async Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId)
+        {
+            var series = _seriesService.GetSeries(seriesId);
+            var episodes = _episodeService.GetEpisodeBySeries(seriesId)
+                .Where(e => e.SeasonNumber > 0).ToList();
+
+            if (episodes.Empty())
+            {
+                throw new SearchFailedException("No regular episodes are known for this series. Refresh its metadata first.");
+            }
+
+            var criteria = Get<CompleteSeriesSearchCriteria>(series, episodes, false, true, true);
+            criteria.SceneTitles = criteria.SceneTitles.Concat(series.AlternateTitles ?? new List<string>())
+                .Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            return DeDupeDecisions(await Dispatch(indexer => indexer.Fetch(criteria), criteria));
         }
 
         public async Task<List<DownloadDecision>> EpisodeSearch(int episodeId, bool userInvokedSearch, bool interactiveSearch)
@@ -522,6 +541,15 @@ namespace NzbDrone.Core.IndexerSearch
             var indexers = criteriaBase.InteractiveSearch ?
                 _indexerFactory.InteractiveSearchEnabled() :
                 _indexerFactory.AutomaticSearchEnabled();
+
+            if (criteriaBase is CompleteSeriesSearchCriteria)
+            {
+                indexers = indexers.Where(i => i.Protocol == DownloadProtocol.Torrent).ToList();
+                if (indexers.Empty())
+                {
+                    throw new SearchFailedException("No torrent indexers are enabled for interactive search.");
+                }
+            }
 
             // Filter indexers to untagged indexers and indexers with intersecting tags
             indexers = indexers.Where(i => i.Definition.Tags.Empty() || i.Definition.Tags.Intersect(criteriaBase.Series.Tags).Any()).ToList();

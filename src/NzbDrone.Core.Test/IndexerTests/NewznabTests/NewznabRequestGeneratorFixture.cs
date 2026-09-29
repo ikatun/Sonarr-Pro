@@ -73,6 +73,36 @@ namespace NzbDrone.Core.Test.IndexerTests.NewznabTests
         }
 
         [Test]
+        public void complete_series_queries_ids_and_aliases_without_season_or_episode_filters()
+        {
+            var criteria = new CompleteSeriesSearchCriteria
+            {
+                Series = _seasonSearchCriteria.Series,
+                SceneTitles = new List<string> { "Monkey Island", "Alternate Title" }
+            };
+            var requests = Subject.GetSearchRequests(criteria);
+            requests.Tiers.Should().Be(1);
+            var urls = requests.GetAllTiers().Select(r => r.First().Url.FullUri).ToList();
+            urls.Should().Contain(u => u.Contains("rid=10"));
+            urls.Should().Contain(u => u.Contains("q=Monkey+Island"));
+            urls.Should().Contain(u => u.Contains("q=Alternate+Title"));
+            urls.Should().OnlyContain(u => !u.Contains("&season=") && !u.Contains("&ep="));
+        }
+
+        [Test]
+        public void complete_series_uses_tv_text_when_generic_text_is_unsupported()
+        {
+            _capabilities.SupportedSearchParameters = new string[0];
+            var requests = Subject.GetSearchRequests(new CompleteSeriesSearchCriteria
+            {
+                Series = _seasonSearchCriteria.Series,
+                SceneTitles = new List<string> { "Monkey Island" }
+            });
+            requests.GetAllTiers().Select(r => r.First().Url.FullUri)
+                .Should().Contain(u => u.Contains("t=tvsearch") && u.Contains("q=Monkey"));
+        }
+
+        [Test]
         public void should_use_all_categories_for_feed()
         {
             var results = Subject.GetRecentRequests();

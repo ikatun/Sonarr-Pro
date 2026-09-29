@@ -327,6 +327,13 @@ namespace NzbDrone.Core.Parser
 
         private List<Episode> GetEpisodes(ParsedEpisodeInfo parsedEpisodeInfo, Series series, int mappedSeasonNumber, bool sceneSource, SearchCriteriaBase searchCriteria)
         {
+            if (searchCriteria is CompleteSeriesSearchCriteria && searchCriteria.Series.Id == series.Id && parsedEpisodeInfo.FullSeason)
+            {
+                // Coverage was matched against the library by the complete-series parser.
+                // Avoid reducing a whole-series pack to its first scene season.
+                return searchCriteria.Episodes;
+            }
+
             if (parsedEpisodeInfo.FullSeason)
             {
                 if (series.UseSceneNumbering && sceneSource)
