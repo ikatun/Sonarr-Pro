@@ -39,3 +39,20 @@ that season's existing files. Already-owned episodes being upgraded keep the
 downloading color without adding unrelated missing episodes to their season.
 Overlapping downloads are counted once. Run `yarn test:queue-details` for the
 frontend regression cases; QueueResourceFixture tests the compact API mapping.
+
+## Automatic release priority
+
+Accepted releases rank by full multi-season pack, single-season pack, then
+episode releases. Pack scope precedes quality, custom-format score and preferred
+protocol. Within the same scope, existing quality/revision and custom-format
+rules still decide; equally ranked packs prefer greater mapped episode coverage.
+Ordinary episode ordering (including anime batches) is retained within the
+episode category. Pack classification requires FullSeason, with IsMultiSeason
+distinguishing multi-season packs. No release is made acceptable by sorting: all
+normal identity, monitoring, profile, size, queue and upgrade checks still apply.
+
+This changes ranking of candidates returned by searches and RSS, not which
+queries Search Monitored runs. A codec preference is configured through a
+positive custom-format score; a zero minimum permits other codecs as fallbacks.
+Allowed lower-ranked resolution groups provide resolution fallback. Existing
+files still need to pass normal upgrade checks before they can be replaced.
