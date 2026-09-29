@@ -87,6 +87,33 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
             Mocker.GetMock<IIndexerFactory>().Verify(s => s.AutomaticSearchEnabled(It.IsAny<bool>()), Times.Never());
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task automatic_complete_series_uses_automatic_torrents_and_enforces_monitoring(bool userInvoked)
+        {
+            WithEpisodes();
+            WithEpisode(0, 1, null, null);
+            _xemEpisodes.First().Monitored = false;
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_xemSeries.Id)).Returns(_xemEpisodes);
+            _mockIndexer.SetupGet(s => s.Protocol).Returns(DownloadProtocol.Torrent);
+            _mockIndexer.Setup(s => s.Fetch(It.IsAny<CompleteSeriesSearchCriteria>()))
+                .ReturnsAsync(new List<Parser.Model.ReleaseInfo>());
+            var usenet = new Mock<IIndexer>();
+            usenet.SetupGet(s => s.Protocol).Returns(DownloadProtocol.Usenet);
+            Mocker.GetMock<IIndexerFactory>().Setup(s => s.AutomaticSearchEnabled(true))
+                .Returns(new List<IIndexer> { _mockIndexer.Object, usenet.Object });
+
+            await Subject.CompleteSeriesSearch(_xemSeries.Id, userInvoked, false);
+
+            _mockIndexer.Verify(s => s.Fetch(It.Is<CompleteSeriesSearchCriteria>(c =>
+                !c.InteractiveSearch && c.MonitoredEpisodesOnly && c.UserInvokedSearch == userInvoked &&
+                c.Episodes.Count == _xemEpisodes.Count - 1 && c.Episodes.Any(e => !e.Monitored) &&
+                c.Episodes.All(e => e.SeasonNumber > 0))),
+                Times.Once());
+            usenet.Verify(s => s.Fetch(It.IsAny<CompleteSeriesSearchCriteria>()), Times.Never());
+            Mocker.GetMock<IIndexerFactory>().Verify(s => s.InteractiveSearchEnabled(It.IsAny<bool>()), Times.Never());
+        }
+
         private void WithEpisode(int seasonNumber, int episodeNumber, int? sceneSeasonNumber, int? sceneEpisodeNumber, string airDate = null)
         {
             var episode = Builder<Episode>.CreateNew()

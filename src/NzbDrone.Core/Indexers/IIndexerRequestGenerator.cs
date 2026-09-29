@@ -14,8 +14,9 @@ namespace NzbDrone.Core.Indexers
                 SceneTitles = searchCriteria.SceneTitles,
                 Episodes = searchCriteria.Episodes,
                 EpisodeQueryTitles = searchCriteria.QueryTitles,
-                InteractiveSearch = true,
-                UserInvokedSearch = true
+                InteractiveSearch = searchCriteria.InteractiveSearch,
+                UserInvokedSearch = searchCriteria.UserInvokedSearch,
+                MonitoredEpisodesOnly = searchCriteria.MonitoredEpisodesOnly
             });
         }
 

@@ -108,7 +108,7 @@ namespace NzbDrone.Core.Parser
             }
 
             // Preserve ordinary quality/language/group parsing while supplying the
-            // advertised coverage only within this interactive search context.
+            // advertised coverage only within this complete-series search context.
             // Keep the actual alias and explicit year: replacing them with the library
             // title can resolve a namesake through a different series' scene mapping.
             var parsed = Parser.ParseTitle($"{matchedTitle} S{expectedSeasons[0]:00}");

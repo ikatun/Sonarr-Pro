@@ -20,6 +20,7 @@ namespace NzbDrone.Core.IndexerSearch
     public interface ISearchForReleases
     {
         Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId);
+        Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> EpisodeSearch(int episodeId, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> EpisodeSearch(Episode episode, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> SeasonSearch(int seriesId, int seasonNumber, bool missingOnly, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
@@ -50,7 +51,12 @@ namespace NzbDrone.Core.IndexerSearch
             _logger = logger;
         }
 
-        public async Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId)
+        public Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId)
+        {
+            return CompleteSeriesSearch(seriesId, true, true);
+        }
+
+        public async Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId, bool userInvokedSearch, bool interactiveSearch)
         {
             var series = _seriesService.GetSeries(seriesId);
             var episodes = _episodeService.GetEpisodeBySeries(seriesId)
@@ -61,7 +67,7 @@ namespace NzbDrone.Core.IndexerSearch
                 throw new SearchFailedException("No regular episodes are known for this series. Refresh its metadata first.");
             }
 
-            var criteria = Get<CompleteSeriesSearchCriteria>(series, episodes, false, true, true);
+            var criteria = Get<CompleteSeriesSearchCriteria>(series, episodes, !interactiveSearch, userInvokedSearch, interactiveSearch);
             criteria.SceneTitles = criteria.SceneTitles.Concat(series.AlternateTitles ?? new List<string>())
                 .Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -547,7 +553,7 @@ namespace NzbDrone.Core.IndexerSearch
                 indexers = indexers.Where(i => i.Protocol == DownloadProtocol.Torrent).ToList();
                 if (indexers.Empty())
                 {
-                    throw new SearchFailedException("No torrent indexers are enabled for interactive search.");
+                    throw new SearchFailedException($"No torrent indexers are enabled for {(criteriaBase.InteractiveSearch ? "interactive" : "automatic")} search.");
                 }
             }
 
