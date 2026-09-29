@@ -119,6 +119,11 @@ namespace NzbDrone.Core.Test.ParserTests
             result.IsMultiSeason.Should().BeTrue();
         }
 
+        [TestCase("Anthony.Bourdain.No.Reservations.S01-S08.MiXED.WEB-DL.MiXED.H.264-MiXED", new[] { 1, 2, 3, 4, 5, 6, 7, 8 })]
+        [TestCase("Series Title S02-S05 1080p WEB-DL", new[] { 2, 3, 4, 5 })]
+        [TestCase("Series Title S02-05 1080p WEB-DL", new[] { 2, 3, 4, 5 })]
+        [TestCase("Series Title Season 02 - Season 05 1080p WEB-DL", new[] { 2, 3, 4, 5 })]
+        [TestCase("Series Title S03-S03 1080p WEB-DL", new[] { 3 })]
         [TestCase("Series Title S01 S04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)", new[] { 1, 4 })]
         [TestCase("Series Title S01 04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)", new[] { 1, 4 })]
         [TestCase("Series Title Complete Series S01 S04 (1080p BluRay x265 HEVC 10bit AAC 5.1 Vyndros)", new[] { 1, 4 })]

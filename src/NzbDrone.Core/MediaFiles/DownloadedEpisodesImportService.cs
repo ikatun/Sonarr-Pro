@@ -203,16 +203,9 @@ namespace NzbDrone.Core.MediaFiles
                 }
             }
 
-            if (downloadClientItemInfo is { IsMultiSeason: true })
-            {
-                _logger.Debug("Download client item is marked as multi-season, not processing automatically to avoid importing incorrect files");
-
-                return new List<ImportResult>
-                {
-                    RejectionResult(ImportRejectionReason.MultiSeason, "Multi-season download, unable to import automatically")
-                };
-            }
-
+            // Multi-season packs use the same recursive, per-file decision pipeline as
+            // season packs. File names identify episodes; pack metadata only supplies
+            // context and the existing folder/grab checks constrain their coverage.
             var decisions = _importDecisionMaker.GetImportDecisions(videoFiles.ToList(), series, downloadClientItem, downloadClientItemInfo, folderInfo, true);
             var importResults = _importApprovedEpisodes.Import(decisions, true, downloadClientItem, importMode);
 

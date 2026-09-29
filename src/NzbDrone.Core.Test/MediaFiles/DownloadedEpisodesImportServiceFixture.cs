@@ -500,30 +500,42 @@ namespace NzbDrone.Core.Test.MediaFiles
         }
 
         [Test]
-        public void should_reject_if_download_is_multi_season()
+        public void should_process_multi_season_files_through_normal_import_pipeline()
         {
-            GivenValidSeries();
+            var folder = @"C:\downloads\Series.Title.S01-S08".AsOsAgnostic();
+            var files = new[]
+            {
+                Path.Combine(folder, "Season 1", "Series.Title.S01E01.mkv"),
+                Path.Combine(folder, "Season 4", "Series.Title.S04E02.mkv"),
+                Path.Combine(folder, "Season 8", "Series.Title.S08E03.mkv")
+            };
+            var decisions = files.Select(f => new ImportDecision(new LocalEpisode { Path = f })).ToList();
+            var results = decisions.Select(d => new ImportResult(d)).ToList();
+            _trackedDownload.DownloadItem.Title = "Series.Title.S01-S08";
+            _trackedDownload.DownloadItem.CanMoveFiles = false;
 
-            _trackedDownload.DownloadItem.Title = "Series Title S01-S11";
-
-            var folderName = @"C:\media\ba09030e-1234-1234-1234-123456789abc\[HorribleSubs] Maria the Virgin Witch - 09 [720p]".AsOsAgnostic();
-
-            Mocker.GetMock<IDiskProvider>().Setup(c => c.FolderExists(folderName))
-                .Returns(true);
-
-            var result = Subject.ProcessPath(folderName, ImportMode.Auto, _trackedDownload.RemoteEpisode.Series, _trackedDownload.DownloadItem);
-
-            result.Count.Should().Be(1);
-            result.First().Result.Should().Be(ImportResultType.Rejected);
-            result.First().ImportDecision.Rejections.First().Reason.Should().Be(ImportRejectionReason.MultiSeason);
-
-            Mocker.GetMock<IParsingService>().Setup(c => c.GetSeries("foldername")).Returns((Series)null);
-
+            Mocker.GetMock<IDiskScanService>()
+                  .Setup(s => s.GetVideoFiles(folder, true)).Returns(files);
             Mocker.GetMock<IMakeImportDecision>()
-                .Verify(c => c.GetImportDecisions(It.IsAny<List<string>>(), It.IsAny<Series>(), It.IsAny<DownloadClientItem>(), It.IsAny<ParsedEpisodeInfo>(), It.IsAny<ParsedEpisodeInfo>(), It.IsAny<bool>(), true),
-                    Times.Never());
+                  .Setup(s => s.GetImportDecisions(
+                      It.Is<List<string>>(f => f.SequenceEqual(files)),
+                      _trackedDownload.RemoteEpisode.Series,
+                      _trackedDownload.DownloadItem,
+                      It.Is<ParsedEpisodeInfo>(p => p.SeasonNumbers.SequenceEqual(Enumerable.Range(1, 8))),
+                      It.Is<ParsedEpisodeInfo>(p => p.SeasonNumbers.SequenceEqual(Enumerable.Range(1, 8))),
+                      true))
+                  .Returns(decisions);
+            Mocker.GetMock<IImportApprovedEpisodes>()
+                  .Setup(s => s.Import(decisions, true, _trackedDownload.DownloadItem, ImportMode.Auto))
+                  .Returns(results);
 
-            VerifyNoImport();
+            Subject.ProcessPath(folder, ImportMode.Auto, _trackedDownload.RemoteEpisode.Series, _trackedDownload.DownloadItem)
+                   .Should().Equal(results);
+
+            Mocker.GetMock<IImportApprovedEpisodes>()
+                  .Verify(s => s.Import(decisions, true, _trackedDownload.DownloadItem, ImportMode.Auto), Times.Once());
+            Mocker.GetMock<IDiskProvider>()
+                  .Verify(s => s.DeleteFolder(It.IsAny<string>(), true), Times.Never());
         }
 
         private void VerifyNoImport()

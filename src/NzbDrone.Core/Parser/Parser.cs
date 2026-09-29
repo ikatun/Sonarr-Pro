@@ -206,7 +206,7 @@ namespace NzbDrone.Core.Parser
                     RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
                 // Multi-season pack
-                new Regex(@"^(?<title>.+?)(Complete Series)?[-_. ]+(?:S|(?:Season|Saison|Series|Stagione)[_. ])(?<season>(?<!\d+)(?:\d{1,2})(?!\d+))(?:[-_. ]{1}|[-_. ]{3})(?:S|(?:Season|Saison|Series|Stagione)[_. ])?(?<season>(?<!\d+)(?:\d{1,2})(?!\d+))",
+                new Regex(@"^(?<title>.+?)(Complete Series)?[-_. ]+(?:S|(?:Season|Saison|Series|Stagione)[_. ])(?<season>(?<!\d+)(?:\d{1,2})(?!\d+))(?<seasonseparator>[-_. ]{1}|[-_. ]{3})(?:S|(?:Season|Saison|Series|Stagione)[_. ])?(?<season>(?<!\d+)(?:\d{1,2})(?!\d+))",
                     RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
                 // Partial season pack
@@ -1056,6 +1056,14 @@ namespace NzbDrone.Core.Parser
 
                         lastSeasonEpisodeStringIndex = Math.Max(lastSeasonEpisodeStringIndex, seasonCapture.EndIndex());
                     }
+                }
+
+                // A hyphen denotes an inclusive range; whitespace-separated seasons
+                // remain an explicit list. Do not expand cross-season episode releases.
+                if (result.FullSeason && seasons.Count == 2 && seasons[1] > seasons[0] &&
+                    matchCollection[0].Groups["seasonseparator"].Value.Contains('-'))
+                {
+                    seasons = Enumerable.Range(seasons[0], seasons[1] - seasons[0] + 1).ToList();
                 }
 
                 var distinctSeasons = seasons.Distinct().OrderBy(s => s).ToArray();
