@@ -98,28 +98,15 @@ namespace NzbDrone.Core.DecisionEngine
 
                     if (parsedEpisodeInfo != null && !parsedEpisodeInfo.SeriesTitle.IsNullOrWhiteSpace())
                     {
-                        // Complete-series parsing has already validated title/alias, year and
-                        // coverage against this exact series. Do not resolve its synthetic
-                        // title again through scene aliases belonging to a namesake.
-                        var remoteEpisode = searchCriteria is CompleteSeriesSearchCriteria validatedSeries
-                            ? new RemoteEpisode
-                            {
-                                Series = validatedSeries.Series,
-                                Episodes = validatedSeries.Episodes,
-                                ParsedEpisodeInfo = parsedEpisodeInfo,
-                                Languages = parsedEpisodeInfo.Languages,
-                                EpisodeRequested = true,
-                                MappedSeasonNumber = parsedEpisodeInfo.SeasonNumber
-                            }
-                            : _parsingService.Map(parsedEpisodeInfo, report.TvdbId, report.TvRageId, report.ImdbId, searchCriteria);
+                        var remoteEpisode = _parsingService.Map(parsedEpisodeInfo, report.TvdbId, report.TvRageId, report.ImdbId, searchCriteria);
                         remoteEpisode.Release = report;
                         remoteEpisode.ReleaseSource = GetReleaseSource(pushedRelease, searchCriteria);
 
                         if (searchCriteria is CompleteSeriesSearchCriteria &&
-                            ((report.TvdbId > 0 && remoteEpisode.Series.TvdbId > 0 && report.TvdbId != remoteEpisode.Series.TvdbId) ||
-                             (report.TvRageId > 0 && remoteEpisode.Series.TvRageId > 0 && report.TvRageId != remoteEpisode.Series.TvRageId) ||
-                             (report.ImdbId.IsNotNullOrWhiteSpace() && remoteEpisode.Series.ImdbId.IsNotNullOrWhiteSpace() &&
-                              !string.Equals(report.ImdbId, remoteEpisode.Series.ImdbId, StringComparison.OrdinalIgnoreCase))))
+                            ((report.TvdbId > 0 && searchCriteria.Series.TvdbId > 0 && report.TvdbId != searchCriteria.Series.TvdbId) ||
+                             (report.TvRageId > 0 && searchCriteria.Series.TvRageId > 0 && report.TvRageId != searchCriteria.Series.TvRageId) ||
+                             (report.ImdbId.IsNotNullOrWhiteSpace() && searchCriteria.Series.ImdbId.IsNotNullOrWhiteSpace() &&
+                              !string.Equals(report.ImdbId, searchCriteria.Series.ImdbId, StringComparison.OrdinalIgnoreCase))))
                         {
                             decision = new DownloadDecision(remoteEpisode, new DownloadRejection(DownloadRejectionReason.WrongSeries, "Release identifiers conflict with searched series"));
                         }

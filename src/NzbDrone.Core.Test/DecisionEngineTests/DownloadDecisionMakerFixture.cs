@@ -75,11 +75,11 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
 
         [TestCase("Berserk 1997 S01 1080p BluRay Dual-Audio Opus 2 0 x265-Kitsune")]
         [TestCase("Kenpuu Denki Berserk COMPLETE 1080p")]
-        [TestCase("Berserk S01 1080p")]
         public void complete_series_should_preserve_validated_identity_and_all_episodes(string title)
         {
             GivenSpecifications(_pass1);
             var criteria = BerserkCriteria();
+            GivenRealCompleteSeriesMapping(criteria);
             _reports[0].Title = title;
             var decision = Subject.GetSearchDecision(_reports, criteria).Single();
 
@@ -88,7 +88,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             decision.RemoteEpisode.Episodes.Should().Equal(criteria.Episodes);
             decision.RemoteEpisode.EpisodeRequested.Should().BeTrue();
             _pass1.Verify(s => s.IsSatisfiedBy(decision.RemoteEpisode, It.IsAny<ReleaseDecisionInformation>()), Times.Once());
-            Mocker.GetMock<IParsingService>().Verify(s => s.Map(It.IsAny<ParsedEpisodeInfo>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<SearchCriteriaBase>()), Times.Never());
+            decision.RemoteEpisode.SeriesMatchType.Should().NotBe(SeriesMatchType.Unknown);
         }
 
         [Test]
@@ -100,6 +100,7 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
             criteria.Series.Year = 2016;
             criteria.Series.TvdbId = 307111;
             criteria.Episodes = Enumerable.Range(1, 24).Select(n => new Episode { Id = n, SeasonNumber = n <= 12 ? 1 : 2, EpisodeNumber = ((n - 1) % 12) + 1 }).ToList();
+            GivenRealCompleteSeriesMapping(criteria);
             _reports[0].Title = "Berserk 2016 S01-S02 1080p";
             var decision = Subject.GetSearchDecision(_reports, criteria).Single();
             decision.Approved.Should().BeTrue();
@@ -115,7 +116,9 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
         {
             GivenSpecifications(_pass1);
             _reports[0] = new ReleaseInfo { Title = "Berserk 1997 S01 1080p", TvdbId = tvdbId, TvRageId = tvRageId, ImdbId = imdbId };
-            var decision = Subject.GetSearchDecision(_reports, BerserkCriteria()).Single();
+            var criteria = BerserkCriteria();
+            GivenRealCompleteSeriesMapping(criteria);
+            var decision = Subject.GetSearchDecision(_reports, criteria).Single();
             decision.Approved.Should().Be(approved);
             if (!approved)
             {
@@ -138,7 +141,59 @@ namespace NzbDrone.Core.Test.DecisionEngineTests
         {
             GivenSpecifications(_fail1);
             _reports[0].Title = "Berserk 1997 S01 1080p";
-            Subject.GetSearchDecision(_reports, BerserkCriteria()).Single().Rejections.Single().Message.Should().Be("fail1");
+            var criteria = BerserkCriteria();
+            GivenRealCompleteSeriesMapping(criteria);
+            Subject.GetSearchDecision(_reports, criteria).Single().Rejections.Single().Message.Should().Be("fail1");
+        }
+
+        [Test]
+        public void complete_series_should_not_force_ambiguous_yearless_title_to_requested_series()
+        {
+            var criteria = BerserkCriteria();
+            GivenRealCompleteSeriesMapping(criteria);
+            Mocker.SetConstant<IEnumerable<IDownloadDecisionEngineSpecification>>(new[]
+            {
+                Mocker.Resolve<NzbDrone.Core.DecisionEngine.Specifications.Search.SeriesSpecification>()
+            });
+            _reports[0].Title = "Berserk S01 1080p";
+            var decision = Subject.GetSearchDecision(_reports, criteria).Single();
+            decision.Approved.Should().BeFalse();
+            decision.RemoteEpisode.Series.TvdbId.Should().Be(307111);
+            decision.Rejections.Single().Reason.Should().Be(DownloadRejectionReason.WrongSeries);
+        }
+
+        [Test]
+        public void complete_series_should_preserve_ambiguous_numbering_warning_for_alias()
+        {
+            var criteria = BerserkCriteria();
+            GivenRealCompleteSeriesMapping(criteria);
+            Mocker.GetMock<ISceneMappingService>()
+                .Setup(s => s.FindSceneMapping("Kenpuu Denki Berserk", It.IsAny<string>(), It.IsAny<int>()))
+                .Returns(new SceneMapping { TvdbId = 73752, SceneOrigin = "mixed" });
+            Mocker.SetConstant<IEnumerable<IDownloadDecisionEngineSpecification>>(new[]
+            {
+                Mocker.Resolve<NzbDrone.Core.DecisionEngine.Specifications.SceneMappingSpecification>()
+            });
+            _reports[0].Title = "Kenpuu Denki Berserk COMPLETE";
+            var decision = Subject.GetSearchDecision(_reports, criteria).Single();
+            decision.Approved.Should().BeFalse();
+            decision.Rejections.Single().Reason.Should().Be(DownloadRejectionReason.AmbiguousNumbering);
+        }
+
+        private void GivenRealCompleteSeriesMapping(CompleteSeriesSearchCriteria criteria)
+        {
+            var namesake = new Series { Id = 747, TvdbId = 307111, Title = "Berserk (2016)", Year = 2016, SeriesType = SeriesTypes.Anime };
+            Mocker.GetMock<ISceneMappingService>()
+                .Setup(s => s.FindSceneMapping("Berserk", It.IsAny<string>(), It.IsAny<int>()))
+                .Returns(new SceneMapping { TvdbId = 307111 });
+            Mocker.GetMock<ISceneMappingService>()
+                .Setup(s => s.FindSceneMapping("Kenpuu Denki Berserk", It.IsAny<string>(), It.IsAny<int>()))
+                .Returns(new SceneMapping { TvdbId = 73752 });
+            Mocker.GetMock<ISeriesService>().Setup(s => s.FindByTvdbId(307111)).Returns(namesake);
+            Mocker.GetMock<ISeriesService>().Setup(s => s.FindByTitle(It.IsAny<string>(), criteria.Series.Year)).Returns(criteria.Series);
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodesBySeason(747, 1))
+                .Returns(Enumerable.Range(1, 12).Select(n => new Episode { Id = 200 + n, SeriesId = 747, SeasonNumber = 1, EpisodeNumber = n }).ToList());
+            Mocker.SetConstant<IParsingService>(Mocker.Resolve<ParsingService>());
         }
 
         private static CompleteSeriesSearchCriteria BerserkCriteria()

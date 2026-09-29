@@ -27,6 +27,7 @@ namespace NzbDrone.Core.Parser
             var cleaned = Regex.Replace(title, @"^\[[^\]]+\]\s*", string.Empty);
             cleaned = Regex.Replace(cleaned, @"['`’]", string.Empty).Replace("&", "and").RemoveDiacritics();
             string suffix = null;
+            string matchedTitle = null;
             foreach (var alias in criteria.SceneTitles.OrderByDescending(t => t.Length))
             {
                 var words = SearchCriteriaBase.GetCleanSceneTitle(alias).Split('+');
@@ -35,6 +36,7 @@ namespace NzbDrone.Core.Parser
                 if (match.Success)
                 {
                     suffix = match.Groups["suffix"].Value;
+                    matchedTitle = cleaned.Substring(0, match.Groups["suffix"].Index).Trim();
                     break;
                 }
             }
@@ -53,6 +55,7 @@ namespace NzbDrone.Core.Parser
                     return null;
                 }
 
+                matchedTitle += $" ({year.Groups["year"].Value})";
                 description = description.Substring(year.Length).Trim();
             }
 
@@ -106,7 +109,9 @@ namespace NzbDrone.Core.Parser
 
             // Preserve ordinary quality/language/group parsing while supplying the
             // advertised coverage only within this interactive search context.
-            var parsed = Parser.ParseTitle($"{criteria.Series.Title} S{expectedSeasons[0]:00}");
+            // Keep the actual alias and explicit year: replacing them with the library
+            // title can resolve a namesake through a different series' scene mapping.
+            var parsed = Parser.ParseTitle($"{matchedTitle} S{expectedSeasons[0]:00}");
             if (parsed == null)
             {
                 return null;
