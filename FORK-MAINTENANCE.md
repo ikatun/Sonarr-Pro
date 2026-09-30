@@ -21,3 +21,7 @@ consistent database backup before any future deployment.
 
 The existing native installation is independent of these builds. Changing the
 Git remote or pushing source does not update its running binaries.
+
+Both workflows also support manual workflow_dispatch runs from the Actions tab.
+Repository Actions permissions allow the hosted build actions; package write
+permission is scoped to the Docker publication job.
