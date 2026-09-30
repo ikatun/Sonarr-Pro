@@ -21,6 +21,7 @@ namespace NzbDrone.Core.IndexerSearch
     {
         Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId);
         Task<List<DownloadDecision>> CompleteSeriesSearch(int seriesId, bool userInvokedSearch, bool interactiveSearch);
+        Task<List<DownloadDecision>> AnimeSeasonPackSearch(Series series, List<Episode> episodes, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> EpisodeSearch(int episodeId, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> EpisodeSearch(Episode episode, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> SeasonSearch(int seriesId, int seasonNumber, bool missingOnly, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
@@ -420,7 +421,7 @@ namespace NzbDrone.Core.IndexerSearch
             return DeDupeDecisions(downloadDecisions);
         }
 
-        private async Task<List<DownloadDecision>> SearchAnimeSeason(Series series, List<Episode> episodes, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch)
+        public async Task<List<DownloadDecision>> AnimeSeasonPackSearch(Series series, List<Episode> episodes, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch)
         {
             var downloadDecisions = new List<DownloadDecision>();
 
@@ -446,7 +447,15 @@ namespace NzbDrone.Core.IndexerSearch
                 downloadDecisions.AddRange(decisions);
             }
 
-            foreach (var episode in episodesToSearch)
+            return DeDupeDecisions(downloadDecisions);
+        }
+
+        private async Task<List<DownloadDecision>> SearchAnimeSeason(Series series, List<Episode> episodes, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch)
+        {
+            var downloadDecisions = await AnimeSeasonPackSearch(series, episodes, monitoredOnly, userInvokedSearch, interactiveSearch);
+
+            foreach (var episode in episodes.Where(ep => interactiveSearch || !monitoredOnly || ep.Monitored)
+                         .Where(ep => ep.AirDateUtc.HasValue && ep.AirDateUtc.Value.Before(DateTime.UtcNow)))
             {
                 downloadDecisions.AddRange(await SearchAnime(series, episode, monitoredOnly, userInvokedSearch, interactiveSearch, true));
             }

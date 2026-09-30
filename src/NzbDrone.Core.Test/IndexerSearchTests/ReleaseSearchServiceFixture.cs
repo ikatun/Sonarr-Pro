@@ -63,6 +63,20 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
         }
 
         [Test]
+        public async Task anime_pack_search_should_not_query_individual_episodes()
+        {
+            WithEpisodes();
+            _xemSeries.SeriesType = SeriesTypes.Anime;
+            _xemEpisodes.ForEach(e => e.Monitored = true);
+            var criteria = WatchForSearchCriteria();
+
+            await Subject.AnimeSeasonPackSearch(_xemSeries, _xemEpisodes, true, true, false);
+
+            criteria.OfType<AnimeSeasonSearchCriteria>().Should().NotBeEmpty();
+            criteria.OfType<AnimeEpisodeSearchCriteria>().Should().BeEmpty();
+        }
+
+        [Test]
         public async Task complete_series_uses_interactive_torrent_indexers_and_all_regular_episodes()
         {
             WithEpisodes();

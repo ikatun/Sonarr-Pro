@@ -101,6 +101,42 @@ namespace NzbDrone.Core.IndexerSearch
                         continue;
                     }
 
+                    if (series.SeriesType == SeriesTypes.Anime)
+                    {
+                        var airedEpisodes = seasonEpisodes
+                            .Where(e => e.AirDateUtc.HasValue && e.AirDateUtc.Value.Before(DateTime.UtcNow))
+                            .ToList();
+                        if (!airedEpisodes.Any())
+                        {
+                            continue;
+                        }
+
+                        var packDecisions = _releaseSearchService.AnimeSeasonPackSearch(series, airedEpisodes, true, userInvokedSearch, false).GetAwaiter().GetResult()
+                            .Where(d => d.RemoteEpisode.ParsedEpisodeInfo?.FullSeason == true &&
+                                        !d.RemoteEpisode.Episodes.Any(e => grabbedEpisodeIds.Contains(e.Id)))
+                            .ToList();
+                        var packs = _processDownloadDecisions.ProcessDecisions(packDecisions).GetAwaiter().GetResult();
+                        downloadedCount += packs.Grabbed.Count;
+                        grabbedEpisodeIds.UnionWith(packs.Grabbed.SelectMany(d => d.RemoteEpisode.Episodes).Select(e => e.Id));
+
+                        foreach (var episode in airedEpisodes)
+                        {
+                            if (CoveredEpisodeIds().Contains(episode.Id))
+                            {
+                                continue;
+                            }
+
+                            var episodeDecisions = _releaseSearchService.EpisodeSearch(episode, userInvokedSearch, false).GetAwaiter().GetResult()
+                                .Where(d => !d.RemoteEpisode.Episodes.Any(e => grabbedEpisodeIds.Contains(e.Id)))
+                                .ToList();
+                            var results = _processDownloadDecisions.ProcessDecisions(episodeDecisions).GetAwaiter().GetResult();
+                            downloadedCount += results.Grabbed.Count;
+                            grabbedEpisodeIds.UnionWith(results.Grabbed.SelectMany(d => d.RemoteEpisode.Episodes).Select(e => e.Id));
+                        }
+
+                        continue;
+                    }
+
                     var decisions = _releaseSearchService.SeasonSearch(message.SeriesId, season.SeasonNumber, !profile.UpgradeAllowed, true, userInvokedSearch, false).GetAwaiter().GetResult();
 
                     // Keep successful grabs across season/episode batches, even before the queue refreshes.

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FizzWare.NBuilder;
@@ -48,6 +49,48 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
             Mocker.GetMock<IProcessDownloadDecisions>()
                   .Setup(s => s.ProcessDecisions(It.IsAny<List<DownloadDecision>>()))
                   .ReturnsAsync(new ProcessedDecisions(new List<DownloadDecision>(), new List<DownloadDecision>(), new List<DownloadDecision>()));
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void anime_should_search_only_episodes_not_successfully_grabbed_in_pack(int grabbedCount)
+        {
+            _series.SeriesType = SeriesTypes.Anime;
+            _series.Seasons = new List<Season> { new Season { SeasonNumber = 1, Monitored = true } };
+            var episodes = Enumerable.Range(1, 2).Select(n => new Episode
+            {
+                Id = n, SeriesId = _series.Id, SeasonNumber = 1, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1)
+            }).ToList();
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_series.Id)).Returns(episodes);
+            var pack = new DownloadDecision(new RemoteEpisode
+            {
+                Series = _series,
+                Episodes = grabbedCount == 0 ? episodes : episodes.Take(grabbedCount).ToList(),
+                ParsedEpisodeInfo = new ParsedEpisodeInfo { FullSeason = true }
+            });
+            Mocker.GetMock<ISearchForReleases>()
+                .Setup(s => s.AnimeSeasonPackSearch(_series, It.IsAny<List<Episode>>(), true, true, false))
+                .ReturnsAsync(new List<DownloadDecision> { pack });
+            Mocker.GetMock<IProcessDownloadDecisions>()
+                .Setup(s => s.ProcessDecisions(It.Is<List<DownloadDecision>>(d => d.Contains(pack))))
+                .ReturnsAsync(new ProcessedDecisions(
+                    grabbedCount > 0 ? new List<DownloadDecision> { pack } : new List<DownloadDecision>(),
+                    new List<DownloadDecision>(),
+                    new List<DownloadDecision>()));
+            Mocker.GetMock<ISearchForReleases>()
+                .Setup(s => s.EpisodeSearch(It.IsAny<Episode>(), true, false))
+                .ReturnsAsync(new List<DownloadDecision>());
+
+            Subject.Execute(new SeriesSearchCommand { SeriesId = _series.Id, Trigger = CommandTrigger.Manual });
+
+            Mocker.GetMock<ISearchForReleases>().Verify(s => s.EpisodeSearch(It.IsAny<Episode>(), true, false), Times.Exactly(2 - grabbedCount));
+            foreach (var episode in episodes.Take(grabbedCount))
+            {
+                Mocker.GetMock<ISearchForReleases>().Verify(s => s.EpisodeSearch(episode, true, false), Times.Never());
+            }
+
+            Mocker.GetMock<ISearchForReleases>().Verify(s => s.SeasonSearch(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never());
         }
 
         [Test]
