@@ -94,8 +94,19 @@ namespace NzbDrone.Core.IndexerSearch
                         .Where(e => e.SeasonNumber == season.SeasonNumber && e.Monitored &&
                                     (profile.UpgradeAllowed || !e.HasFile))
                         .ToList();
+
+                    // Search Monitored fills gaps; upgrades remain allowed only within an incomplete season.
+                    var missingEpisodes = seasonEpisodes
+                        .Where(e => !e.HasFile && e.AirDateUtc.HasValue && e.AirDateUtc.Value.Before(DateTime.UtcNow))
+                        .ToList();
+                    if (!missingEpisodes.Any())
+                    {
+                        _logger.Debug("Season {0} of {1} has no missing aired monitored episodes, skipping search", season.SeasonNumber, series.Title);
+                        continue;
+                    }
+
                     var covered = CoveredEpisodeIds();
-                    if (seasonEpisodes.Any() && seasonEpisodes.All(e => covered.Contains(e.Id)))
+                    if (missingEpisodes.All(e => covered.Contains(e.Id)))
                     {
                         _logger.Debug("Season {0} of {1} is already covered by downloads, skipping search", season.SeasonNumber, series.Title);
                         continue;

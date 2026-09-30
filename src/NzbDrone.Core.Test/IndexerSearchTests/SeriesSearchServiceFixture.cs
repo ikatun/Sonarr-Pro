@@ -36,7 +36,7 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
                       };
 
             Mocker.GetMock<IQueueService>().Setup(s => s.GetQueue()).Returns(new List<Queue.Queue>());
-            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(It.IsAny<int>())).Returns(new List<Episode>());
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(It.IsAny<int>())).Returns(Enumerable.Range(1, 3).Select(n => new Episode { Id = n, SeasonNumber = n, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1) }).ToList());
 
             Mocker.GetMock<ISeriesService>()
                   .Setup(s => s.GetSeries(It.IsAny<int>()))
@@ -49,6 +49,38 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
             Mocker.GetMock<IProcessDownloadDecisions>()
                   .Setup(s => s.ProcessDecisions(It.IsAny<List<DownloadDecision>>()))
                   .ReturnsAsync(new ProcessedDecisions(new List<DownloadDecision>(), new List<DownloadDecision>(), new List<DownloadDecision>()));
+        }
+
+        [TestCase(SeriesTypes.Standard, false, false, false, 0)]
+        [TestCase(SeriesTypes.Anime, false, false, false, 0)]
+        [TestCase(SeriesTypes.Standard, true, true, false, 1)]
+        [TestCase(SeriesTypes.Anime, true, true, false, 1)]
+        [TestCase(SeriesTypes.Standard, true, false, false, 0)]
+        [TestCase(SeriesTypes.Standard, true, true, true, 0)]
+        public void should_search_only_seasons_with_missing_aired_monitored_episodes(SeriesTypes type, bool missing, bool monitored, bool future, int searches)
+        {
+            _series.SeriesType = type;
+            _series.Seasons = new List<Season> { new Season { SeasonNumber = 1, Monitored = true } };
+            var episodes = new List<Episode>
+            {
+                new Episode { Id = 1, SeasonNumber = 1, Monitored = true, EpisodeFileId = 1, AirDateUtc = DateTime.UtcNow.AddDays(-1) },
+                new Episode { Id = 2, SeasonNumber = 1, Monitored = monitored, EpisodeFileId = missing ? 0 : 2, AirDateUtc = DateTime.UtcNow.AddDays(future ? 1 : -1) }
+            };
+            Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_series.Id)).Returns(episodes);
+            Mocker.GetMock<ISearchForReleases>().Setup(s => s.AnimeSeasonPackSearch(_series, It.IsAny<List<Episode>>(), true, true, false)).ReturnsAsync(new List<DownloadDecision>());
+            Mocker.GetMock<ISearchForReleases>().Setup(s => s.EpisodeSearch(It.IsAny<Episode>(), true, false)).ReturnsAsync(new List<DownloadDecision>());
+
+            Subject.Execute(new SeriesSearchCommand { SeriesId = _series.Id, Trigger = CommandTrigger.Manual });
+
+            if (type == SeriesTypes.Anime)
+            {
+                Mocker.GetMock<ISearchForReleases>().Verify(s => s.AnimeSeasonPackSearch(_series, It.Is<List<Episode>>(e => e.Count == 2), true, true, false), Times.Exactly(searches));
+            }
+            else
+            {
+                // Keep missingOnly false so a pack may include already-owned episodes.
+                Mocker.GetMock<ISearchForReleases>().Verify(s => s.SeasonSearch(_series.Id, 1, false, true, true, false), Times.Exactly(searches));
+            }
         }
 
         [TestCase(0)]
@@ -152,7 +184,7 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
         public void should_carry_successful_pack_coverage_across_seasons(bool grabbed)
         {
             _series.Seasons = Enumerable.Range(1, 3).Select(n => new Season { SeasonNumber = n, Monitored = true }).ToList();
-            var episodes = Enumerable.Range(1, 3).Select(n => new Episode { Id = n, SeriesId = _series.Id, SeasonNumber = n, Monitored = true }).ToList();
+            var episodes = Enumerable.Range(1, 3).Select(n => new Episode { Id = n, SeriesId = _series.Id, SeasonNumber = n, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1) }).ToList();
             Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_series.Id)).Returns(episodes);
             var pack = new DownloadDecision(new RemoteEpisode { Series = _series, Episodes = episodes.Take(2).ToList() });
             var searches = new List<int>();
@@ -174,15 +206,15 @@ namespace NzbDrone.Core.Test.IndexerSearchTests
         [TestCase(false, TrackedDownloadState.Downloading, 0)]
         [TestCase(true, TrackedDownloadState.Downloading, 1)]
         [TestCase(false, TrackedDownloadState.FailedPending, 1)]
-        [TestCase(false, TrackedDownloadState.Imported, 1)]
+        [TestCase(false, TrackedDownloadState.Imported, 0)]
         public void should_skip_only_fully_covered_seasons(bool partial, TrackedDownloadState state, int expectedSearches)
         {
             _series.Seasons = new List<Season> { new Season { SeasonNumber = 2, Monitored = true } };
             var episodes = new List<Episode>
             {
-                new Episode { Id = 1, SeasonNumber = 1, Monitored = true },
-                new Episode { Id = 2, SeasonNumber = 2, Monitored = true, EpisodeFileId = state == TrackedDownloadState.Imported ? 42 : 0 },
-                new Episode { Id = 3, SeasonNumber = 2, Monitored = true, EpisodeFileId = state == TrackedDownloadState.Imported ? 43 : 0 }
+                new Episode { Id = 1, SeasonNumber = 1, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1) },
+                new Episode { Id = 2, SeasonNumber = 2, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1), EpisodeFileId = state == TrackedDownloadState.Imported ? 42 : 0 },
+                new Episode { Id = 3, SeasonNumber = 2, Monitored = true, AirDateUtc = DateTime.UtcNow.AddDays(-1), EpisodeFileId = state == TrackedDownloadState.Imported ? 43 : 0 }
             };
             Mocker.GetMock<IEpisodeService>().Setup(s => s.GetEpisodeBySeries(_series.Id)).Returns(episodes);
             Mocker.GetMock<IQueueService>().Setup(s => s.GetQueue()).Returns(new List<Queue.Queue>
