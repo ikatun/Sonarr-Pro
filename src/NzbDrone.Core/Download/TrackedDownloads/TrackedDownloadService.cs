@@ -98,7 +98,10 @@ namespace NzbDrone.Core.Download.TrackedDownloads
         {
             var existingItem = Find(downloadItem.DownloadId);
 
-            if (existingItem != null && existingItem.State != TrackedDownloadState.Downloading)
+            // An unresolved import must be allowed to recover when grab history becomes
+            // available. Keeping a null RemoteEpisode cached makes that failure permanent.
+            var unresolvedImport = existingItem?.State == TrackedDownloadState.ImportBlocked && existingItem.RemoteEpisode == null;
+            if (existingItem != null && existingItem.State != TrackedDownloadState.Downloading && !unresolvedImport)
             {
                 LogItemChange(existingItem, existingItem.DownloadItem, downloadItem);
 
@@ -142,8 +145,9 @@ namespace NzbDrone.Core.Download.TrackedDownloads
 
                 if (historyItems.Any())
                 {
-                    var firstHistoryItem = historyItems.First();
                     var grabbedEvent = historyItems.FirstOrDefault(v => v.EventType == EpisodeHistoryEventType.Grabbed);
+                    // Import history describes individual files, not the original pack.
+                    var sourceHistoryItem = grabbedEvent ?? historyItems.First();
 
                     trackedDownload.Indexer = grabbedEvent?.Data?.GetValueOrDefault("indexer");
                     trackedDownload.Added = grabbedEvent?.Date;
@@ -154,14 +158,15 @@ namespace NzbDrone.Core.Download.TrackedDownloads
                     {
                         // Try parsing the original source title and if that fails, try parsing it as a special
                         // TODO: Pass the TVDB ID and TVRage IDs in as well so we have a better chance for finding the item
-                        parsedEpisodeInfo = Parser.Parser.ParseTitle(firstHistoryItem.SourceTitle) ??
-                                            _parsingService.ParseSpecialEpisodeTitle(parsedEpisodeInfo, firstHistoryItem.SourceTitle, 0, 0, null);
+                        parsedEpisodeInfo = Parser.Parser.ParseTitle(sourceHistoryItem.SourceTitle) ??
+                                            _parsingService.ParseSpecialEpisodeTitle(parsedEpisodeInfo, sourceHistoryItem.SourceTitle, 0, 0, null);
 
                         if (parsedEpisodeInfo != null)
                         {
                             trackedDownload.RemoteEpisode = _parsingService.Map(parsedEpisodeInfo,
-                                firstHistoryItem.SeriesId,
-                                historyItems.Where(v => v.EventType == EpisodeHistoryEventType.Grabbed)
+                                sourceHistoryItem.SeriesId,
+                                historyItems.Where(v => v.EventType == EpisodeHistoryEventType.Grabbed &&
+                                                            v.SeriesId == sourceHistoryItem.SeriesId)
                                     .Select(h => h.EpisodeId).Distinct());
                         }
                     }

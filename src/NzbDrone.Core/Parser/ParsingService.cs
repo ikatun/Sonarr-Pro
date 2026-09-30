@@ -256,28 +256,8 @@ namespace NzbDrone.Core.Parser
                 MappedSeasonNumber = parsedEpisodeInfo.SeasonNumber
             };
 
-            // For now we just detect tvdb vs scene, but we can do multiple 'origins' in the future.
-            var sceneSource = true;
-            if (sceneMapping != null)
-            {
-                if (sceneMapping.SeasonNumber.HasValue && sceneMapping.SeasonNumber.Value >= 0 &&
-                    sceneMapping.SceneSeasonNumber <= parsedEpisodeInfo.SeasonNumber)
-                {
-                    remoteEpisode.MappedSeasonNumber += sceneMapping.SeasonNumber.Value - sceneMapping.SceneSeasonNumber.Value;
-                }
-
-                if (sceneMapping.SceneOrigin == "tvdb")
-                {
-                    sceneSource = false;
-                }
-                else if (sceneMapping.Type == "XemService" &&
-                         sceneMapping.SceneSeasonNumber.NonNegative().HasValue &&
-                         parsedEpisodeInfo.SeasonNumber == 1 &&
-                         sceneMapping.SceneSeasonNumber != parsedEpisodeInfo.SeasonNumber)
-                {
-                    remoteEpisode.MappedSeasonNumber = sceneMapping.SceneSeasonNumber.Value;
-                }
-            }
+            var sceneSource = sceneMapping?.SceneOrigin != "tvdb";
+            remoteEpisode.MappedSeasonNumber = GetMappedSeasonNumber(parsedEpisodeInfo.SeasonNumber, sceneMapping);
 
             if (series == null)
             {
@@ -351,28 +331,27 @@ namespace NzbDrone.Core.Parser
 
             if (parsedEpisodeInfo.FullSeason)
             {
-                if (series.UseSceneNumbering && sceneSource)
-                {
-                    var episodes = _episodeService.GetEpisodesBySceneSeason(series.Id, mappedSeasonNumber);
-
-                    // If episodes were found by the scene season number return them, otherwise fallback to look-up by season number
-                    if (episodes.Any())
-                    {
-                        return episodes;
-                    }
-                }
-
-                // A pack spanning several seasons resolves to the episodes of all of them.
-                // Scene numbering is not applied here because scene seasons are mapped one
-                // at a time and a multi-season pack has no single scene season.
                 if (parsedEpisodeInfo.IsMultiSeason && parsedEpisodeInfo.SeasonNumbers.Length > 1)
                 {
-                    return parsedEpisodeInfo.SeasonNumbers
-                        .SelectMany(s => _episodeService.GetEpisodesBySeason(series.Id, s))
-                        .ToList();
+                    // Resolve every advertised season before returning. A scene-season hit for
+                    // the first season must not truncate the rest of the pack.
+                    var episodes = new List<Episode>();
+                    foreach (var season in parsedEpisodeInfo.SeasonNumbers)
+                    {
+                        var mapping = sceneSource
+                            ? _sceneMappingService.FindSceneMapping(parsedEpisodeInfo.SeriesTitle, parsedEpisodeInfo.ReleaseTitle, season)
+                            : null;
+                        var mappedSeason = sceneSource
+                            ? GetMappedSeasonNumber(season, mapping)
+                            : season + mappedSeasonNumber - parsedEpisodeInfo.SeasonNumber;
+
+                        episodes.AddRange(GetSeasonEpisodes(series, mappedSeason, sceneSource && mapping?.SceneOrigin != "tvdb"));
+                    }
+
+                    return episodes.DistinctBy(e => e.Id).ToList();
                 }
 
-                return _episodeService.GetEpisodesBySeason(series.Id, mappedSeasonNumber);
+                return GetSeasonEpisodes(series, mappedSeasonNumber, sceneSource);
             }
 
             if (parsedEpisodeInfo.IsDaily)
@@ -681,6 +660,37 @@ namespace NzbDrone.Core.Parser
             }
 
             return episodeInfo;
+        }
+
+        private static int GetMappedSeasonNumber(int seasonNumber, SceneMapping mapping)
+        {
+            var mappedSeason = seasonNumber;
+            if (mapping?.SeasonNumber >= 0 && mapping.SceneSeasonNumber <= seasonNumber)
+            {
+                mappedSeason += mapping.SeasonNumber.Value - mapping.SceneSeasonNumber.Value;
+            }
+
+            if (mapping?.SceneOrigin != "tvdb" && mapping?.Type == "XemService" &&
+                mapping.SceneSeasonNumber.NonNegative().HasValue && seasonNumber == 1 && mapping.SceneSeasonNumber != 1)
+            {
+                mappedSeason = mapping.SceneSeasonNumber.Value;
+            }
+
+            return mappedSeason;
+        }
+
+        private List<Episode> GetSeasonEpisodes(Series series, int seasonNumber, bool sceneSource)
+        {
+            if (series.UseSceneNumbering && sceneSource)
+            {
+                var episodes = _episodeService.GetEpisodesBySceneSeason(series.Id, seasonNumber);
+                if (episodes.Any())
+                {
+                    return episodes;
+                }
+            }
+
+            return _episodeService.GetEpisodesBySeason(series.Id, seasonNumber);
         }
 
         private List<Episode> GetAnimeEpisodes(Series series, ParsedEpisodeInfo parsedEpisodeInfo, int seasonNumber, bool sceneSource, SearchCriteriaBase searchCriteria)
