@@ -4,7 +4,8 @@ Source: https://github.com/ikatun/Sonarr-Pro (main).
 Upstream: https://github.com/KakarottoCake/Sonarr-Pro.
 
 GitHub Actions uses hosted Ubuntu runners; no home-server runner or server
-credentials are required. CI builds the solution, runs backend tests and frontend
+credentials are required. The container SDK is pinned to 10.0.302 to match
+global.json. CI builds the solution, runs backend tests and frontend
 queue regressions, and checks frontend lint and the production bundle. Pull
 requests also build the Linux amd64 container without publishing.
 
