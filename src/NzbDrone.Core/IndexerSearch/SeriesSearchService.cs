@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Messaging.Commands;
+using NzbDrone.Core.Queue;
 using NzbDrone.Core.Tv;
 
 namespace NzbDrone.Core.IndexerSearch
@@ -16,18 +18,21 @@ namespace NzbDrone.Core.IndexerSearch
         private readonly ISearchForReleases _releaseSearchService;
         private readonly IProcessDownloadDecisions _processDownloadDecisions;
         private readonly Logger _logger;
+        private readonly IQueueService _queueService;
 
         public SeriesSearchService(ISeriesService seriesService,
                                    IEpisodeService episodeService,
                                    ISearchForReleases releaseSearchService,
                                    IProcessDownloadDecisions processDownloadDecisions,
-                                   Logger logger)
+                                   Logger logger,
+                                   IQueueService queueService)
         {
             _seriesService = seriesService;
             _episodeService = episodeService;
             _releaseSearchService = releaseSearchService;
             _processDownloadDecisions = processDownloadDecisions;
             _logger = logger;
+            _queueService = queueService;
         }
 
         public void Execute(SeriesSearchCommand message)
@@ -36,6 +41,17 @@ namespace NzbDrone.Core.IndexerSearch
             var downloadedCount = 0;
             var userInvokedSearch = message.Trigger == CommandTrigger.Manual;
             var profile = series.QualityProfile.Value;
+            var grabbedEpisodeIds = new HashSet<int>();
+
+            HashSet<int> CoveredEpisodeIds()
+            {
+                var covered = new HashSet<int>(grabbedEpisodeIds);
+                covered.UnionWith(_queueService.GetQueue()
+                    .Where(q => q.RemoteEpisode?.Series?.Id == series.Id && ActiveMultiSeasonCoverage.IsProtected(q))
+                    .SelectMany(q => q.RemoteEpisode.Episodes)
+                    .Select(e => e.Id));
+                return covered;
+            }
 
             if (series.Seasons.None(s => s.Monitored))
             {
@@ -50,9 +66,18 @@ namespace NzbDrone.Core.IndexerSearch
 
                 foreach (var episode in episodes)
                 {
+                    if (CoveredEpisodeIds().Contains(episode.Id))
+                    {
+                        continue;
+                    }
+
                     var decisions = _releaseSearchService.EpisodeSearch(episode, userInvokedSearch, false).GetAwaiter().GetResult();
+
+                    // Keep successful grabs across season/episode batches, even before the queue refreshes.
+                    decisions = decisions.Where(d => !d.RemoteEpisode.Episodes.Any(e => grabbedEpisodeIds.Contains(e.Id))).ToList();
                     var processDecisions = _processDownloadDecisions.ProcessDecisions(decisions).GetAwaiter().GetResult();
                     downloadedCount += processDecisions.Grabbed.Count;
+                    grabbedEpisodeIds.UnionWith(processDecisions.Grabbed.SelectMany(d => d.RemoteEpisode.Episodes).Select(e => e.Id));
                 }
             }
             else
@@ -65,9 +90,24 @@ namespace NzbDrone.Core.IndexerSearch
                         continue;
                     }
 
+                    var seasonEpisodes = _episodeService.GetEpisodeBySeries(series.Id)
+                        .Where(e => e.SeasonNumber == season.SeasonNumber && e.Monitored &&
+                                    (profile.UpgradeAllowed || !e.HasFile))
+                        .ToList();
+                    var covered = CoveredEpisodeIds();
+                    if (seasonEpisodes.Any() && seasonEpisodes.All(e => covered.Contains(e.Id)))
+                    {
+                        _logger.Debug("Season {0} of {1} is already covered by downloads, skipping search", season.SeasonNumber, series.Title);
+                        continue;
+                    }
+
                     var decisions = _releaseSearchService.SeasonSearch(message.SeriesId, season.SeasonNumber, !profile.UpgradeAllowed, true, userInvokedSearch, false).GetAwaiter().GetResult();
+
+                    // Keep successful grabs across season/episode batches, even before the queue refreshes.
+                    decisions = decisions.Where(d => !d.RemoteEpisode.Episodes.Any(e => grabbedEpisodeIds.Contains(e.Id))).ToList();
                     var processDecisions = _processDownloadDecisions.ProcessDecisions(decisions).GetAwaiter().GetResult();
                     downloadedCount += processDecisions.Grabbed.Count;
+                    grabbedEpisodeIds.UnionWith(processDecisions.Grabbed.SelectMany(d => d.RemoteEpisode.Episodes).Select(e => e.Id));
                 }
             }
 
