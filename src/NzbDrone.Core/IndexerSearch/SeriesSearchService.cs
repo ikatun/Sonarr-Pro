@@ -5,6 +5,7 @@ using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation.Extensions;
 using NzbDrone.Core.Download;
+using NzbDrone.Core.Exceptions;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Queue;
 using NzbDrone.Core.Tv;
@@ -82,6 +83,33 @@ namespace NzbDrone.Core.IndexerSearch
             }
             else
             {
+                var monitoredSeasons = series.Seasons.Where(s => s.Monitored && s.SeasonNumber > 0)
+                    .Select(s => s.SeasonNumber).ToHashSet();
+                var initialCoverage = CoveredEpisodeIds();
+                var incompleteSeasons = _episodeService.GetEpisodeBySeries(series.Id)
+                    .Where(e => monitoredSeasons.Contains(e.SeasonNumber) && e.Monitored &&
+                                !e.HasFile && e.AirDateUtc.HasValue && e.AirDateUtc.Value.Before(DateTime.UtcNow) &&
+                                !initialCoverage.Contains(e.Id))
+                    .Select(e => e.SeasonNumber).Distinct().Count();
+
+                if (incompleteSeasons > 1)
+                {
+                    try
+                    {
+                        var completeDecisions = _releaseSearchService.CompleteSeriesSearch(series.Id, userInvokedSearch, false).GetAwaiter().GetResult();
+                        if (completeDecisions.Any())
+                        {
+                            var completeResults = _processDownloadDecisions.ProcessDecisions(completeDecisions).GetAwaiter().GetResult();
+                            downloadedCount += completeResults.Grabbed.Count;
+                            grabbedEpisodeIds.UnionWith(completeResults.Grabbed.SelectMany(d => d.RemoteEpisode.Episodes).Select(e => e.Id));
+                        }
+                    }
+                    catch (SearchFailedException ex)
+                    {
+                        _logger.Warn(ex, "Complete-series search unavailable for {0}; continuing with season searches", series.Title);
+                    }
+                }
+
                 foreach (var season in series.Seasons.OrderBy(s => s.SeasonNumber))
                 {
                     if (!season.Monitored)
