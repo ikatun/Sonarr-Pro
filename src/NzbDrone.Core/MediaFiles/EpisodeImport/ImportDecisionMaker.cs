@@ -7,6 +7,7 @@ using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.MediaFiles.EpisodeImport.Aggregation;
+using NzbDrone.Core.Parser;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Tv;
 
@@ -31,6 +32,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
         private readonly ITrackedDownloadService _trackedDownloadService;
         private readonly ILocalEpisodeCustomFormatCalculationService _formatCalculator;
         private readonly Logger _logger;
+        private readonly IEpisodeNumberingResolver _numberingResolver;
 
         public ImportDecisionMaker(IEnumerable<IImportDecisionEngineSpecification> specifications,
                                    IMediaFileService mediaFileService,
@@ -39,7 +41,8 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
                                    IDetectSample detectSample,
                                    ITrackedDownloadService trackedDownloadService,
                                    ILocalEpisodeCustomFormatCalculationService formatCalculator,
-                                   Logger logger)
+                                   Logger logger,
+                                   IEpisodeNumberingResolver numberingResolver)
         {
             _specifications = specifications;
             _mediaFileService = mediaFileService;
@@ -49,6 +52,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
             _trackedDownloadService = trackedDownloadService;
             _formatCalculator = formatCalculator;
             _logger = logger;
+            _numberingResolver = numberingResolver;
         }
 
         public List<ImportDecision> GetImportDecisions(List<string> videoFiles, Series series)
@@ -77,6 +81,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
             var nonSampleVideoFileCount = sceneSource ? GetNonSampleVideoFileCount(newFiles, series, downloadClientItemInfo, folderInfo) : videoFiles.Count;
 
             var decisions = new List<ImportDecision>();
+            var batchNumbering = sceneSource ? _numberingResolver.InferBatch(series, newFiles) : null;
 
             foreach (var file in newFiles)
             {
@@ -88,6 +93,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
                     FolderEpisodeInfo = folderInfo,
                     Path = file,
                     SceneSource = sceneSource,
+                    BatchNumbering = batchNumbering,
                     ExistingFile = series.Path.IsParentPath(file),
                     OtherVideoFiles = nonSampleVideoFileCount > 1
                 };
@@ -123,7 +129,11 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport
 
                 _aggregationService.Augment(localEpisode, downloadClientItem);
 
-                if (localEpisode.Episodes.Empty())
+                if (!string.IsNullOrEmpty(localEpisode.NumberingRejection))
+                {
+                    decision = new ImportDecision(localEpisode, new ImportRejection(ImportRejectionReason.AmbiguousNumbering, localEpisode.NumberingRejection));
+                }
+                else if (localEpisode.Episodes.Empty())
                 {
                     if (IsPartialSeason(localEpisode))
                     {

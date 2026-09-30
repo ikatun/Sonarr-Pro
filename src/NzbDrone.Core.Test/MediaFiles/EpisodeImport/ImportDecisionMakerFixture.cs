@@ -220,5 +220,22 @@ namespace NzbDrone.Core.Test.MediaFiles.EpisodeImport
 
             ExceptionVerification.ExpectedErrors(1);
         }
+
+        [Test]
+        public void ambiguous_numbering_should_block_automatic_import_even_when_other_specs_accept()
+        {
+            GivenSpecifications(_pass1, _pass2, _pass3);
+            Mocker.GetMock<IAggregationService>()
+                .Setup(s => s.Augment(It.IsAny<LocalEpisode>(), It.IsAny<DownloadClientItem>()))
+                .Callback<LocalEpisode, DownloadClientItem>((localEpisode, item) =>
+                {
+                    localEpisode.Episodes = _localEpisode.Episodes;
+                    localEpisode.NumberingRejection = "Ambiguous scene/library numbering";
+                });
+            var decision = Subject.GetImportDecisions(_videoFiles, _series).Single();
+            decision.Approved.Should().BeFalse();
+            decision.Rejections.Should().ContainSingle().Which.Reason.Should().Be(ImportRejectionReason.AmbiguousNumbering);
+            _pass1.Verify(s => s.IsSatisfiedBy(It.IsAny<LocalEpisode>(), It.IsAny<DownloadClientItem>()), Times.Never());
+        }
     }
 }

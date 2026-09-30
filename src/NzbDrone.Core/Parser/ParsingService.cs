@@ -33,16 +33,19 @@ namespace NzbDrone.Core.Parser
         private readonly ISeriesService _seriesService;
         private readonly ISceneMappingService _sceneMappingService;
         private readonly Logger _logger;
+        private readonly IEpisodeNumberingResolver _numberingResolver;
 
         public ParsingService(IEpisodeService episodeService,
                               ISeriesService seriesService,
                               ISceneMappingService sceneMappingService,
-                              Logger logger)
+                              Logger logger,
+                              IEpisodeNumberingResolver numberingResolver)
         {
             _episodeService = episodeService;
             _seriesService = seriesService;
             _sceneMappingService = sceneMappingService;
             _logger = logger;
+            _numberingResolver = numberingResolver;
         }
 
         public Series GetSeries(string title)
@@ -294,6 +297,18 @@ namespace NzbDrone.Core.Parser
                 if (ValidateParsedEpisodeInfo.ValidateForSeriesType(parsedEpisodeInfo, series))
                 {
                     remoteEpisode.Episodes = GetEpisodes(parsedEpisodeInfo, series, remoteEpisode.MappedSeasonNumber, sceneSource, searchCriteria);
+                    var numbering = _numberingResolver.Resolve(series, parsedEpisodeInfo, sceneMapping);
+                    if (numbering != null)
+                    {
+                        remoteEpisode.NumberingRejection = numbering.Rejection;
+                        if (numbering.Episodes != null)
+                        {
+                            remoteEpisode.Episodes = numbering.Episodes;
+                            remoteEpisode.MappedSeasonNumber = numbering.Episodes.Select(e => e.SeasonNumber).Distinct().Count() == 1
+                                ? numbering.Episodes[0].SeasonNumber
+                                : remoteEpisode.MappedSeasonNumber;
+                        }
+                    }
                 }
             }
 
