@@ -26,7 +26,7 @@ namespace NzbDrone.Core.Test.ParserTests.ParsingServiceTests
             _episodes = new[] { 24, 13, 24 }.SelectMany((count, index) => Enumerable.Range(1, count)
                 .Select(number => new Episode
                 {
-                    Id = (index + 1) * 100 + number,
+                    Id = ((index + 1) * 100) + number,
                     SeriesId = _series.Id,
                     SeasonNumber = index + 1,
                     EpisodeNumber = number,

@@ -7,6 +7,7 @@ using NUnit.Framework;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Download.TrackedDownloads;
 using NzbDrone.Core.History;
+using NzbDrone.Core.Indexers;
 using NzbDrone.Core.Parser;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Test.Framework;
@@ -78,6 +79,7 @@ namespace NzbDrone.Core.Test.Download.TrackedDownloads
             result.RemoteEpisode.ParsedEpisodeInfo.ReleaseTitle.Should().Be(PackTitle);
             result.RemoteEpisode.ParsedEpisodeInfo.SeasonNumbers.Should().Equal(1, 2, 3);
             result.RemoteEpisode.Series.Id.Should().Be(55);
+
             // Do not silently expand legacy grab IDs or synthesize history from imported files.
             result.RemoteEpisode.Episodes.Select(e => e.Id).Should().Equal(101);
         }

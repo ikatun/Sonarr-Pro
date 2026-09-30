@@ -146,6 +146,7 @@ namespace NzbDrone.Core.Download.TrackedDownloads
                 if (historyItems.Any())
                 {
                     var grabbedEvent = historyItems.FirstOrDefault(v => v.EventType == EpisodeHistoryEventType.Grabbed);
+
                     // Import history describes individual files, not the original pack.
                     var sourceHistoryItem = grabbedEvent ?? historyItems.First();
 
