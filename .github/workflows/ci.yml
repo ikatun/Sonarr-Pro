@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - main
+      - complete-series-search
   pull_request:
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -46,6 +50,8 @@ jobs:
           cache: yarn
 
       - run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - run: yarn test:queue-details
 
       - run: yarn lint
 

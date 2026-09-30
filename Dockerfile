@@ -114,5 +114,5 @@ CMD ["/app/Sonarr", "-nobrowser", "-data=/config"]
 
 LABEL org.opencontainers.image.title="Sonarr Pro" \
       org.opencontainers.image.description="A fork of Sonarr with TMDB, IMDb, AniList and MyAnimeList metadata, selectable episode orderings, absolute numbering, multi-season packs and fake release filtering." \
-      org.opencontainers.image.source="https://github.com/KakarottoCake/Sonarr-Pro" \
+      org.opencontainers.image.source="https://github.com/ikatun/Sonarr-Pro" \
       org.opencontainers.image.licenses="GPL-3.0-only"
