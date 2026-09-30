@@ -29,7 +29,7 @@ RUN yarn build --env production
 # ---------------------------------------------------------------------------
 # Backend
 # ---------------------------------------------------------------------------
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS backend
+FROM mcr.microsoft.com/dotnet/sdk:10.0.302-noble AS backend
 
 ARG TARGETARCH
 WORKDIR /src
