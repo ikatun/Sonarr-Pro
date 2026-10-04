@@ -22,6 +22,10 @@ RUN yarn install --frozen-lockfile --network-timeout 600000
 COPY tsconfig.json ./
 COPY frontend/ ./frontend/
 
+# The frontend checks that used to run in a separate CI workflow. A failure here fails
+# the image build, so no image is published from code that does not pass them.
+RUN yarn test:queue-details && yarn lint && yarn stylelint
+
 # --env production is what switches webpack out of eval-source-map. Without it the
 # bundle ships as tens of megabytes of dev output and the UI renders as a blank page.
 RUN yarn build --env production
@@ -58,6 +62,15 @@ RUN set -eux; \
       -t:PublishAllRids; \
     mkdir -p /app; \
     cp -r "_output/net10.0/${RID}/publish/." /app/
+
+# Run the backend test suite against the same build, so the image is only produced
+# from code whose tests pass; this replaces the separate CI build. The runtime-specific
+# test assembly is the one that loads for a Posix build. Emulated arm64 builds (release
+# tags only) skip it: the amd64 build of the same commit runs the identical tests.
+RUN set -eux; \
+    if [ "${TARGETARCH}" = "amd64" ]; then \
+      dotnet test _tests/net10.0/linux-x64/Sonarr.Core.Test.dll --logger "console;verbosity=minimal"; \
+    fi
 
 # The UI is built separately and is not produced by the .NET build.
 COPY --from=ui /src/_output/UI /app/UI
