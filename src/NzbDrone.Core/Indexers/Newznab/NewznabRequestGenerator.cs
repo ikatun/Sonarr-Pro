@@ -486,6 +486,11 @@ namespace NzbDrone.Core.Indexers.Newznab
                 {
                     requests.Add(GetPagedRequests(MaxPages, categories, "search", $"&q={System.Web.HttpUtility.UrlEncode(title)}"));
                 }
+
+                foreach (var query in searchCriteria.PackQueryTitles)
+                {
+                    requests.Add(GetPagedRequests(MaxPages, categories, "search", $"&q={System.Web.HttpUtility.UrlEncode(query)}"));
+                }
             }
             else
             {
