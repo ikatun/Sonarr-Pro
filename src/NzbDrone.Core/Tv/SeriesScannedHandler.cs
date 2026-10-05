@@ -1,3 +1,4 @@
+using System.Linq;
 using NLog;
 using NzbDrone.Core.IndexerSearch;
 using NzbDrone.Core.MediaFiles.Events;
@@ -44,6 +45,20 @@ namespace NzbDrone.Core.Tv
             }
 
             _logger.Info("[{0}] was recently added, performing post-add actions", series.Title);
+
+            // Clients that add series without a monitor choice (legacy add API, e.g. an Overseerr "all seasons" request)
+            // send the full TMDb season list including Specials, monitored. Specials are searched one episode at a time
+            // and are rarely wanted, so leave them unmonitored; the Sonarr add dialog always sends an explicit choice.
+            if (addOptions.Monitor == MonitorTypes.Unknown)
+            {
+                var specials = series.Seasons.SingleOrDefault(season => season.SeasonNumber == 0);
+                if (specials is { Monitored: true })
+                {
+                    _logger.Info("[{0}] Not monitoring specials requested without a monitor choice", series.Title);
+                    specials.Monitored = false;
+                }
+            }
+
             _episodeMonitoredService.SetEpisodeMonitoredStatus(series, addOptions);
 
             _eventAggregator.PublishEvent(new SeriesAddCompletedEvent(series));
