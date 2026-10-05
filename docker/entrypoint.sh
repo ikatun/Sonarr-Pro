@@ -9,6 +9,12 @@ set -e
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+# New folders and files must be group-writable (775/664), like the other *arr images make them:
+# other services in the media group (subtitle tools, Bazarr) write sidecars next to the media.
+# The default umask 022 created 755 series folders they could not write to.
+UMASK=${UMASK:-002}
+umask "$UMASK"
+
 if [ "$(id -u)" = "0" ]; then
     if ! getent group sonarr >/dev/null 2>&1; then
         addgroup --gid "$PGID" sonarr 2>/dev/null || groupadd -g "$PGID" sonarr 2>/dev/null || true
