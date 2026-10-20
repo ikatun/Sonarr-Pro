@@ -12,6 +12,7 @@ namespace NzbDrone.Core.Parser
         private static readonly Regex SeasonRange = new Regex(@"\b(?:s|seasons?|series)\s*(?<first>\d{1,3})\s*(?:-|–|—|to)\s*(?:s|seasons?|series)?\s*(?<last>\d{1,3})(?![a-z0-9])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex Season = new Regex(@"\b(?:s|seasons?|series)\s*(?<season>\d{1,3})(?![a-z0-9])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex Complete = new Regex(@"^(?:the\s+)?(?:complete(?:\s+(?:series|collection))?|(?:entire|full)\s+series|all\s+seasons|box\s*set)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex BareQuality = new Regex(@"^(?:bd|bdrip|blu-?ray|brrip|bdremux|remux|web(?:-?dl|-?rip)?|hdtv|dvd(?:rip)?|\d{3,4}p|x26[45]|h\s?26[45]|hevc|avc|hi10p?|10-?bit)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex Episode = new Regex(@"\bs\d+\s*e\d+|\b\d+x\d+\b|\b(?:episodes?|parts?|volumes?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public static ParsedEpisodeInfo Parse(string title, CompleteSeriesSearchCriteria criteria)
@@ -64,8 +65,18 @@ namespace NzbDrone.Core.Parser
                 return null;
             }
 
+            // Some trackers name a single-season show's only pack with nothing but the
+            // title and quality tokens. Accept that only when the library knows of exactly
+            // one regular season, so it cannot stand in for a multi-season run.
+            var bareSingleSeasonPack = BareQuality.IsMatch(description) &&
+                !Regex.IsMatch(description, @"\b(?:seasons?|series|complete)\b|^\d+\s*-\s*\d+", RegexOptions.IgnoreCase) &&
+                !Season.IsMatch(description) &&
+                expectedSeasons.Length == 1 &&
+                criteria.Series.Seasons != null &&
+                criteria.Series.Seasons.Where(s => s.SeasonNumber > 0).Select(s => s.SeasonNumber).SequenceEqual(expectedSeasons);
+
             // A longer, different series title must not match a shorter alias prefix.
-            if (!Complete.IsMatch(description) && !Season.IsMatch(description.Split(' ')[0]) &&
+            if (!bareSingleSeasonPack && !Complete.IsMatch(description) && !Season.IsMatch(description.Split(' ')[0]) &&
                 !Regex.IsMatch(description, @"^(?:seasons?|series)\s+\d+|^\d+\s*-\s*\d+", RegexOptions.IgnoreCase))
             {
                 return null;
@@ -102,7 +113,7 @@ namespace NzbDrone.Core.Parser
                     return null;
                 }
             }
-            else if (!Complete.IsMatch(description) || Regex.IsMatch(description, @"\bseason\b", RegexOptions.IgnoreCase))
+            else if (!bareSingleSeasonPack && (!Complete.IsMatch(description) || Regex.IsMatch(description, @"\bseason\b", RegexOptions.IgnoreCase)))
             {
                 return null;
             }

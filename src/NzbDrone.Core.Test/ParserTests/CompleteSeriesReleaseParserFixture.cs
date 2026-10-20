@@ -69,6 +69,56 @@ namespace NzbDrone.Core.Test.ParserTests
             CompleteSeriesReleaseParser.Parse("No Reservations S01", _criteria).Should().NotBeNull();
         }
 
+        private void GivenSingleSeasonSeries()
+        {
+            _criteria.Series.Seasons = new List<Season> { new Season { SeasonNumber = 0 }, new Season { SeasonNumber = 1 } };
+            _criteria.Episodes = Enumerable.Range(1, 23).Select(e => new Episode { SeasonNumber = 1, EpisodeNumber = e }).ToList();
+        }
+
+        [TestCase("No Reservations (BD 1080p HEVC x265 10-bit FLAC)")]
+        [TestCase("No Reservations BD 1080p Hi10p FLAC5 1 x264x [Dual-Audio]")]
+        [TestCase("No.Reservations.1080p.BluRay.x265-GROUP")]
+        [TestCase("[Group] No Reservations [BD 1080p]")]
+        public void accepts_bare_title_pack_for_single_season_series(string title)
+        {
+            GivenSingleSeasonSeries();
+
+            var parsed = CompleteSeriesReleaseParser.Parse(title, _criteria);
+            parsed.Should().NotBeNull();
+            parsed.SeasonNumbers.Should().Equal(1);
+            parsed.FullSeason.Should().BeTrue();
+        }
+
+        [TestCase("No Reservations The Movie 1080p")]
+        [TestCase("No Reservations Again 1080p BluRay")]
+        [TestCase("No Reservations S01E01 1080p")]
+        [TestCase("No Reservations Episode 3 1080p")]
+        [TestCase("No Reservations S02 1080p")]
+        [TestCase("No Reservations (2007) 1080p")]
+        [TestCase("No Reservations")]
+        public void rejects_non_pack_titles_for_single_season_series(string title)
+        {
+            GivenSingleSeasonSeries();
+
+            CompleteSeriesReleaseParser.Parse(title, _criteria).Should().BeNull();
+        }
+
+        [Test]
+        public void rejects_bare_title_pack_for_multi_season_series()
+        {
+            _criteria.Series.Seasons = Enumerable.Range(1, 9).Select(s => new Season { SeasonNumber = s }).ToList();
+
+            CompleteSeriesReleaseParser.Parse("No Reservations BD 1080p x265", _criteria).Should().BeNull();
+        }
+
+        [Test]
+        public void rejects_bare_title_pack_when_seasons_unknown()
+        {
+            _criteria.Episodes = _criteria.Episodes.Take(1).ToList();
+
+            CompleteSeriesReleaseParser.Parse("No Reservations BD 1080p x265", _criteria).Should().BeNull();
+        }
+
         [TestCase("[Group] No Reservations - 01-26 [1080p]", true)]
         [TestCase("[Group] No Reservations - 01-12 [1080p]", false)]
         public void checks_anime_absolute_batch_coverage(string title, bool complete)
